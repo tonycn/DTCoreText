@@ -9,13 +9,6 @@
 #import "DTCoreText.h"
 #import "NSAttributedString+DTCoreText.h"
 
-// use smaller list indent on iPhone OS
-#if TARGET_OS_IPHONE
-#define SPECIAL_LIST_INDENT		27.0f
-#else
-#define SPECIAL_LIST_INDENT		36.0f
-#endif
-
 @implementation NSAttributedString (DTCoreText)
 
 #pragma mark Text Attachments
@@ -123,11 +116,11 @@
 
 - (NSRange)_rangeOfObject:(id)object inArrayBehindAttribute:(NSString *)attribute atIndex:(NSUInteger)location
 {
-	NSInteger searchIndex = location;
+	NSUInteger searchIndex = location;
 	
 	NSArray *arrayAtIndex;
-	NSInteger minFoundIndex = NSIntegerMax;
-	NSInteger maxFoundIndex = 0;
+	NSUInteger minFoundIndex = NSUIntegerMax;
+	NSUInteger maxFoundIndex = 0;
 	
 	BOOL foundList = NO;
 	
@@ -195,6 +188,21 @@
 - (NSRange)rangeOfTextBlock:(DTTextBlock *)textBlock atIndex:(NSUInteger)location
 {
 	return [self _rangeOfObject:textBlock inArrayBehindAttribute:DTTextBlocksAttribute atIndex:location];
+}
+
+- (NSRange)rangeOfAnchorNamed:(NSString *)anchorName
+{
+	__block NSRange foundRange = NSMakeRange(0, NSNotFound);
+	
+	[self enumerateAttribute:DTAnchorAttribute inRange:NSMakeRange(0, [self length]) options:0 usingBlock:^(NSString *value, NSRange range, BOOL *stop) {
+		if ([value isEqualToString:anchorName])
+		{
+			*stop = YES;
+			foundRange = range;
+		}
+	}];
+	
+	return foundRange;
 }
 
 #pragma mark HTML Encoding
@@ -340,7 +348,7 @@
 	
 	NSArray *previousListStyles = nil;
 
-	for (int i=0; i<[paragraphs count]; i++)
+	for (NSUInteger i=0; i<[paragraphs count]; i++)
 	{
 		NSString *oneParagraph = [paragraphs objectAtIndex:i];
 		NSRange paragraphRange = NSMakeRange(location, [oneParagraph length]);
@@ -456,7 +464,7 @@
 		
 		if (headerLevel)
 		{
-			blockElement = [NSString stringWithFormat:@"h%d", [headerLevel integerValue]];
+			blockElement = [NSString stringWithFormat:@"h%d", (int)[headerLevel integerValue]];
 		}
 		
 		if ([paragraphs lastObject] == oneParagraph)
@@ -678,6 +686,34 @@
 				}
 			}
 			
+			NSNumber *superscript = [attributes objectForKey:(id)kCTSuperscriptAttributeName];
+			if (superscript)
+			{
+				NSInteger style = [superscript integerValue];
+				
+				switch (style)
+				{
+					case 1:
+					{
+						fontStyle = [fontStyle stringByAppendingString:@"vertical-align:super;"];
+						break;
+					}
+						
+					case -1:
+					{
+						fontStyle = [fontStyle stringByAppendingString:@"vertical-align:sub;"];
+						break;
+					}
+						
+					default:
+					{
+						// all other are baseline because we don't support anything else for text
+						fontStyle = [fontStyle stringByAppendingString:@"vertical-align:baseline;"];
+						
+						break;
+					}
+				}
+			}
 			
 			NSURL *url = [attributes objectForKey:DTLinkAttribute];
 			
@@ -740,8 +776,8 @@
 	return [tmpString stringByReplacingOccurrencesOfString:UNICODE_OBJECT_PLACEHOLDER withString:@""];
 }
 
-#pragma Generating Special Attributed Strings
-+ (NSAttributedString *)prefixForListItemWithCounter:(NSUInteger)listCounter listStyle:(DTCSSListStyle *)listStyle attributes:(NSDictionary *)attributes
+#pragma mark Generating Special Attributed Strings
++ (NSAttributedString *)prefixForListItemWithCounter:(NSUInteger)listCounter listStyle:(DTCSSListStyle *)listStyle listIndent:(CGFloat)listIndent attributes:(NSDictionary *)attributes
 {
 	// get existing values from attributes
 	CTParagraphStyleRef paraStyle = (__bridge CTParagraphStyleRef)[attributes objectForKey:(id)kCTParagraphStyleAttributeName];
@@ -757,12 +793,15 @@
 		
 		paragraphStyle.tabStops = nil;
 		
-		paragraphStyle.headIndent = SPECIAL_LIST_INDENT;
+		paragraphStyle.headIndent = listIndent;
 		paragraphStyle.paragraphSpacing = 0;
 		
-		// first tab is to right-align bullet, numbering against
-		CGFloat tabOffset = paragraphStyle.headIndent - 5.0f*1.0; // TODO: change with font size
-		[paragraphStyle addTabStopAtPosition:tabOffset alignment:kCTRightTextAlignment];
+		if (listStyle.type != DTCSSListStyleTypeNone)
+		{
+			// first tab is to right-align bullet, numbering against
+			CGFloat tabOffset = paragraphStyle.headIndent - 5.0f*1.0; // TODO: change with font size
+			[paragraphStyle addTabStopAtPosition:tabOffset alignment:kCTRightTextAlignment];
+		}
 		
 		// second tab is for the beginning of first line after bullet
 		[paragraphStyle addTabStopAtPosition:paragraphStyle.headIndent alignment:	kCTLeftTextAlignment];	
@@ -783,7 +822,7 @@
 		fontDesc.boldTrait = NO;
 		fontDesc.italicTrait = NO;
 		
-		CTFontRef font = [fontDesc newMatchingFont];
+		font = [fontDesc newMatchingFont];
 		
 		[newAttributes setObject:CFBridgingRelease(font) forKey:(id)kCTFontAttributeName];
 	}
@@ -801,6 +840,14 @@
 		[newAttributes setObject:CFBridgingRelease(newParagraphStyle) forKey:(id)kCTParagraphStyleAttributeName];
 	}
 	
+	// add textBlock if there's one (this has padding and background color)
+	NSArray *textBlocks = [attributes objectForKey:DTTextBlocksAttribute];
+	if (textBlocks)
+	{
+		[newAttributes setObject:textBlocks forKey:DTTextBlocksAttribute];
+	}
+	
+	// transfer list style to new attributes
 	if (listStyle)
 	{
 		[newAttributes setObject:[NSArray arrayWithObject:listStyle] forKey:DTTextListsAttribute];
@@ -829,7 +876,6 @@
 		}
 		
 		NSMutableAttributedString *tmpStr = [[NSMutableAttributedString alloc] initWithString:prefix attributes:newAttributes];
-		
 		
 		if (image)
 		{

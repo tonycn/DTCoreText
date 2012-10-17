@@ -106,13 +106,23 @@
 	// Create attributed string from HTML
 	CGSize maxImageSize = CGSizeMake(self.view.bounds.size.width - 20.0, self.view.bounds.size.height - 20.0);
 	
-	NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithFloat:1.0], NSTextSizeMultiplierDocumentOption, [NSValue valueWithCGSize:maxImageSize], DTMaxImageSize,
-													 @"Times New Roman", DTDefaultFontFamily,  @"purple", DTDefaultLinkColor, baseURL, NSBaseURLDocumentOption, nil]; 
+	// example for setting a willFlushCallback, that gets called before elements are written to the generated attributed string
+	void (^callBackBlock)(DTHTMLElement *element) = ^(DTHTMLElement *element) {
+		// if an element is larger than twice the font size put it in it's own block
+		if (element.displayStyle == DTHTMLElementDisplayStyleInline && element.textAttachment.displaySize.height > 2.0 * element.fontDescriptor.pointSize)
+		{
+			element.displayStyle = DTHTMLElementDisplayStyleBlock;
+		}
+	};
 	
-	NSAttributedString *string = [[NSAttributedString alloc] initWithHTML:data options:options documentAttributes:NULL];
+	NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithFloat:1.0], NSTextSizeMultiplierDocumentOption, [NSValue valueWithCGSize:maxImageSize], DTMaxImageSize,
+													 @"Times New Roman", DTDefaultFontFamily,  @"purple", DTDefaultLinkColor, callBackBlock, DTWillFlushBlockCallBack, nil]; 
+	
+	NSAttributedString *string = [[NSAttributedString alloc] initWithHTMLData:data options:options documentAttributes:NULL];
 	
 	// Display string
 	_textView.contentView.edgeInsets = UIEdgeInsetsMake(10, 10, 10, 10);
+	_textView.contentView.shouldDrawLinks = NO; // we draw them in DTLinkButton
 	_textView.attributedString = string;
 }
 
@@ -232,12 +242,34 @@
 
 
 #pragma mark Custom Views on Text
-- (UIView *)attributedTextContentView:(DTAttributedTextContentView *)attributedTextContentView viewForLink:(NSURL *)url identifier:(NSString *)identifier frame:(CGRect)frame
+
+- (UIView *)attributedTextContentView:(DTAttributedTextContentView *)attributedTextContentView viewForAttributedString:(NSAttributedString *)string frame:(CGRect)frame
 {
+	NSDictionary *attributes = [string attributesAtIndex:0 effectiveRange:NULL];
+	
+	NSURL *URL = [attributes objectForKey:DTLinkAttribute];
+	NSString *identifier = [attributes objectForKey:DTGUIDAttribute];
+	
+	
 	DTLinkButton *button = [[DTLinkButton alloc] initWithFrame:frame];
-	button.URL = url;
+	button.URL = URL;
 	button.minimumHitSize = CGSizeMake(25, 25); // adjusts it's bounds so that button is always large enough
 	button.GUID = identifier;
+	
+	// we draw the contents ourselves
+	button.attributedString = string;
+	
+	// make a version with different text color
+	NSMutableAttributedString *highlightedString = [string mutableCopy];
+	
+	NSRange range = NSMakeRange(0, highlightedString.length);
+	
+	NSDictionary *highlightedAttributes = [NSDictionary dictionaryWithObject:(__bridge id)[UIColor redColor].CGColor forKey:(id)kCTForegroundColorAttributeName];
+	
+	
+	[highlightedString addAttributes:highlightedAttributes range:range];
+	
+	button.highlightedAttributedString = highlightedString;
 	
 	// use normal push action for opening URL
 	[button addTarget:self action:@selector(linkPushed:) forControlEvents:UIControlEventTouchUpInside];
@@ -351,6 +383,7 @@
 	}
 	else if (attachment.contentType == DTTextAttachmentTypeIframe)
 	{
+		frame.origin.x += 50;
 		DTWebVideoView *videoView = [[DTWebVideoView alloc] initWithFrame:frame];
 		videoView.attachment = attachment;
 		
@@ -380,15 +413,16 @@
 	if (color)
 	{
 		CGContextSetFillColorWithColor(context, color);
+		CGContextAddPath(context, [roundedRect CGPath]);
+		CGContextFillPath(context);
+		
+		CGContextAddPath(context, [roundedRect CGPath]);
+		CGContextSetRGBStrokeColor(context, 0, 0, 0, 1);
+		CGContextStrokePath(context);
+		return NO;
 	}
-	CGContextAddPath(context, [roundedRect CGPath]);
-	CGContextFillPath(context);
 	
-	CGContextAddPath(context, [roundedRect CGPath]);
-	CGContextSetRGBStrokeColor(context, 0, 0, 0, 1);
-	CGContextStrokePath(context);
-	
-	return NO; // draw standard background
+	return YES; // draw standard background
 }
 
 
@@ -396,7 +430,26 @@
 
 - (void)linkPushed:(DTLinkButton *)button
 {
-	[[UIApplication sharedApplication] openURL:[button.URL absoluteURL]];
+	NSURL *URL = button.URL;
+	
+	if ([[UIApplication sharedApplication] canOpenURL:[URL absoluteURL]])
+	{
+		[[UIApplication sharedApplication] openURL:[URL absoluteURL]];
+	}
+	else 
+	{
+		if (![URL host] && ![URL path])
+		{
+		
+			// possibly a local anchor link
+			NSString *fragment = [URL fragment];
+			
+			if (fragment)
+			{
+				[_textView scrollToAnchorNamed:fragment animated:NO];
+			}
+		}
+	}
 }
 
 - (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex

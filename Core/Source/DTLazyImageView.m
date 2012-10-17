@@ -19,6 +19,7 @@ static NSCache *_imageCache = nil;
 @implementation DTLazyImageView
 {
 	NSURL *_url;
+	NSMutableURLRequest *_urlRequest;
 	
 	NSURLConnection *_connection;
 	NSMutableData *_receivedData;
@@ -52,9 +53,14 @@ static NSCache *_imageCache = nil;
 	
 	@autoreleasepool 
 	{
-		NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReturnCacheDataElseLoad timeoutInterval:10.0];
+		if (_urlRequest == nil) {
+			_urlRequest = [[NSMutableURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReturnCacheDataElseLoad timeoutInterval:10.0];
+		} else {
+			[_urlRequest setCachePolicy:NSURLRequestReturnCacheDataElseLoad];
+			[_urlRequest setTimeoutInterval:10.0];
+		}
 		
-		_connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO];
+		_connection = [[NSURLConnection alloc] initWithRequest:_urlRequest delegate:self startImmediately:NO];
 		[_connection scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
 		[_connection start];
 	
@@ -67,7 +73,7 @@ static NSCache *_imageCache = nil;
 {
 	[super didMoveToSuperview];
 	
-	if (!self.image && _url && !_connection && self.superview)
+	if (!self.image && (_url || _urlRequest) && !_connection && self.superview)
 	{
 		UIImage *image = [_imageCache objectForKey:_url];
 		
@@ -275,7 +281,13 @@ static NSCache *_imageCache = nil;
 
 #pragma mark Properties
 
+- (void) setUrlRequest:(NSMutableURLRequest *)request {
+	_urlRequest = request;
+	self.url = [_urlRequest URL];
+}
+
 @synthesize url = _url;
 @synthesize shouldShowProgressiveDownload;
+@synthesize urlRequest = _urlRequest;
 
 @end

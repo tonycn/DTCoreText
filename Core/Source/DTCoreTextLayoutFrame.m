@@ -8,6 +8,7 @@
 
 #import "DTCoreText.h"
 #import "DTCoreTextLayoutFrame.h"
+#import "DTVersion.h"
 
 // global flag that shows debug frames
 static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
@@ -154,7 +155,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 	paragraphMetrics previousParaMetrics = {0,0,0};
 	
 	lineMetrics currentLineMetrics;
-	lineMetrics previousLineMetrics;
+//	lineMetrics previousLineMetrics;
 	
 	DTTextBlock *currentTextBlock = nil;
 	DTTextBlock *previousTextBlock = nil;
@@ -235,6 +236,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		CGFloat maxLineHeight = 0;
 		
 		BOOL usesSyntheticLeading = NO;
+		BOOL usesForcedLineHeight = NO;
 		
 		if (currentLineMetrics.leading == 0.0f)
 		{
@@ -260,6 +262,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		{
 			if (lineHeight<minLineHeight)
 			{
+				usesForcedLineHeight = YES;
 				lineHeight = minLineHeight;
 			}
 		}
@@ -321,6 +324,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		{
 			if (maxLineHeight>0 && lineHeight>maxLineHeight)
 			{
+				usesForcedLineHeight = YES;
 				lineHeight = maxLineHeight;
 			}
 		}
@@ -374,8 +378,12 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 				
 			case kCTJustifiedTextAlignment:
 			{
-				// only justify if the line widht is longer than 60% of the frame to avoid over-stretching
-				if (currentLineMetrics.width > 0.6 * _frame.size.width)
+				BOOL isAtEndOfParagraph    = (currentParagraphRange.location+currentParagraphRange.length <= lineRange.location+lineRange.length || 		// JTL 28/June/2012
+					[[_attributedStringFragment string] characterAtIndex:lineRange.location+lineRange.length-1]==0x2028);									// JTL 28/June/2012
+
+				// only justify if not last line, not <br>, and if the line width is longer than 60% of the frame
+				// avoids over-stretching
+				if( !isAtEndOfParagraph && (currentLineMetrics.width > 0.60 * _frame.size.width) ) 
 				{
 					// create a justified line and replace the current one with it
 					CTLineRef justifiedLine = CTLineCreateJustifiedLine(line, 1.0f, availableSpace);
@@ -395,6 +403,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		if (lineBottom>maxY)
 		{
 			// doesn't fit any more
+			CFRelease(line);
 			break;
 		}
 		
@@ -412,8 +421,15 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		
 		lineRange.location += lineRange.length;
 		
+		// if there is a custom line height we need to adjust the ascender too
+		if (usesForcedLineHeight)
+		{
+			// causes the line frame to encompass also the extra space
+			newLine.ascent = lineHeight;
+		}
+		
 		previousLine = newLine;
-		previousLineMetrics = currentLineMetrics;
+	//previousLineMetrics = currentLineMetrics;
 	} 
 	while (lineRange.location < maxIndex);
 	
@@ -491,9 +507,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 	//[self _correctLineOrigins];
 	
 	// --- begin workaround for image squishing bug in iOS < 4.2
-	DTVersion version = [[UIDevice currentDevice] osVersion];
-	
-	if (version.major<4 || (version.major==4 && version.minor < 2))
+	if ([DTVersion osVersionIsLessThen:@"4.2"])
 	{
 		[self _correctAttachmentHeights];
 	}
@@ -667,7 +681,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 	return frame;
 }
 
-- (void)drawInContext:(CGContextRef)context drawImages:(BOOL)drawImages
+- (void)drawInContext:(CGContextRef)context drawImages:(BOOL)drawImages drawLinks:(BOOL)drawLinks
 {
 	CGContextSaveGState(context);
 	
@@ -790,6 +804,10 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 				runIndex ++;
 			}
 			
+			if (!drawLinks && oneRun.isHyperlink)
+			{
+				continue;
+			}
 			
 			CGColorRef backgroundColor = (__bridge CGColorRef)[oneRun.attributes objectForKey:DTBackgroundColorAttribute];
 			
@@ -925,6 +943,11 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 				continue;
 			}
 			
+			if (!drawLinks && oneRun.isHyperlink)
+			{
+				continue;
+			}
+			
 			CGPoint textPosition = CGPointMake(oneLine.frame.origin.x, self.frame.size.height - oneRun.frame.origin.y - oneRun.ascent);
 			
 			NSInteger superscriptStyle = [[oneRun.attributes objectForKey:(id)kCTSuperscriptAttributeName] integerValue];
@@ -975,8 +998,12 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 						{
 							DTImage *image = (id)attachment.contents;
 							
+							// frame might be different due to image vertical alignment
+							CGFloat ascender = [attachment ascentForLayout];
+							CGFloat descender = [attachment descentForLayout];
+							 
 							CGPoint origin = oneRun.frame.origin;
-							origin.y = self.frame.size.height - origin.y - oneRun.ascent;
+							origin.y = self.frame.size.height - origin.y - ascender - descender;
 							CGRect flippedRect = CGRectMake(roundf(origin.x), roundf(origin.y), attachment.displaySize.width, attachment.displaySize.height);
 							
 							CGContextDrawImage(context, flippedRect, image.CGImage);

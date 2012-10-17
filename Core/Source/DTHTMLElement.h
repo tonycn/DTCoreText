@@ -17,7 +17,8 @@ typedef enum
 	DTHTMLElementDisplayStyleInline = 0, // default
 	DTHTMLElementDisplayStyleNone,
 	DTHTMLElementDisplayStyleBlock,
-	DTHTMLElementDisplayStyleListItem
+	DTHTMLElementDisplayStyleListItem,
+	DTHTMLElementDisplayStyleTable,
 } DTHTMLElementDisplayStyle;
 
 typedef enum
@@ -41,9 +42,11 @@ typedef enum
 @property (nonatomic, copy) DTCoreTextParagraphStyle *paragraphStyle;
 @property (nonatomic, strong) DTTextAttachment *textAttachment;
 @property (nonatomic, copy) NSURL *link;
+@property (nonatomic, copy) NSString *anchorName;
 @property (nonatomic, strong) DTColor *textColor;
 @property (nonatomic, strong) DTColor *backgroundColor;
 @property (nonatomic, copy) NSString *tagName;
+@property (nonatomic, copy) NSString *beforeContent;
 @property (nonatomic, copy) NSString *text;
 @property (nonatomic, copy) NSArray *shadows;
 @property (nonatomic, assign) CTUnderlineStyle underlineStyle;

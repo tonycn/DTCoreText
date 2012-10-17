@@ -7,10 +7,7 @@
 //
 
 #import "DTCoreTextFontDescriptor.h"
-
-#if TARGET_OS_IPHONE
-#import "UIDevice+DTVersion.h"
-#endif
+#import "DTVersion.h"
 
 static NSCache *_fontCache = nil;
 static NSMutableDictionary *_fontOverrides = nil;
@@ -68,9 +65,12 @@ static BOOL _needsChineseFontCascadeFix = NO;
 	
 #if TARGET_OS_IPHONE
 	// workaround for iOS 5.x bug: global font cascade table has incorrect bold font for Chinese characters in Chinese locale
-	DTVersion version = [[UIDevice currentDevice] osVersion];
 	
-	if (version.major>4)
+	
+	DTVersion *version = [DTVersion osVersion];
+	
+	// seems to be fixed in iOS 6
+	if (version.major<6)
 	{
 		_needsChineseFontCascadeFix = YES;
 	}
@@ -385,12 +385,13 @@ static BOOL _needsChineseFontCascadeFix = NO;
 	CGFloat slant = [[traits objectForKey:(id)kCTFontSlantTrait] floatValue];
 	BOOL hasItalicTrait = ([[traits objectForKey:(id)kCTFontSymbolicTrait] unsignedIntValue] & kCTFontItalicTrait) ==kCTFontItalicTrait;
 
-	if (hasItalicTrait || slant!=0) 
+	if (!hasItalicTrait || slant<0.01) 
 	{
-		return YES;
+		return NO;
 	}
 
-	return NO;
+	// font HAS italic trait AND sufficient slant angle
+	return YES;
 	
 }
 

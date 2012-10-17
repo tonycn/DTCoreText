@@ -8,14 +8,11 @@
 
 #import <CoreText/CoreText.h>
 
-#import "NSAttributedString+HTML.h"
-
-#import "DTCoreTextLayouter.h"
-#import "DTTextAttachment.h"
-
 @class DTAttributedTextContentView;
 @class DTCoreTextLayoutFrame;
 @class DTTextBlock;
+@class DTCoreTextLayouter;
+@class DTTextAttachment;
 
 /**
  Protocol to provide custom views for elements in an DTAttributedTextContentView. Also the delegate gets notified once the text view has been drawn.
@@ -103,7 +100,7 @@
 	NSAttributedString *_attributedString;
 	DTCoreTextLayoutFrame *_layoutFrame;
 	
-	UIEdgeInsets edgeInsets;
+	UIEdgeInsets _edgeInsets;
 	
 	NSMutableDictionary *customViewsForAttachmentsIndex;
 }
@@ -128,6 +125,7 @@
 @property (nonatomic) UIEdgeInsets edgeInsets;
 @property (nonatomic) BOOL drawDebugFrames;
 @property (nonatomic) BOOL shouldDrawImages;
+@property (nonatomic) BOOL shouldDrawLinks;
 @property (nonatomic) BOOL shouldLayoutCustomSubviews;
 @property (nonatomic) CGPoint layoutOffset;
 @property (nonatomic) CGSize backgroundOffset;
