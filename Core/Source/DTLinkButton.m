@@ -160,14 +160,33 @@ NSString *DTLinkButtonDidHighlightNotification = @"DTLinkButtonDidHighlightNotif
 				
 	CGColorRef backgroundColor = (__bridge CGColorRef)[runAttributes objectForKey:DTBackgroundColorAttribute];
 	
+#if __IPHONE_OS_VERSION_MAX_ALLOWED > __IPHONE_5_1
+	if (!backgroundColor&&___useiOS6Attributes)
+	{
+		// could also be the iOS 6 background color
+		DTColor *color = [runAttributes objectForKey:NSBackgroundColorAttributeName];
+		backgroundColor = color.CGColor;
+	}
+#endif
+	
 	if (drawStrikeOut||drawUnderline||backgroundColor)
 	{
 		// get text color or use black
-		id color = [runAttributes objectForKey:(id)kCTForegroundColorAttributeName];
+		CGColorRef foregroundColor = (__bridge CGColorRef)[runAttributes objectForKey:(id)kCTForegroundColorAttributeName];
 		
-		if (color)
+#if __IPHONE_OS_VERSION_MAX_ALLOWED > __IPHONE_5_1
+		// could also be an iOS 6 attribute
+		if (!foregroundColor)
 		{
-			CGContextSetStrokeColorWithColor(context, (__bridge CGColorRef)color);
+			// could also be the iOS 6 background color
+			DTColor *color = [runAttributes objectForKey:NSBackgroundColorAttributeName];
+			foregroundColor = color.CGColor;
+		}
+#endif
+		
+		if (foregroundColor)
+		{
+			CGContextSetStrokeColorWithColor(context, foregroundColor);
 		}
 		else
 		{
